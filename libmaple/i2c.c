@@ -181,14 +181,14 @@ void i2c_master_enable(i2c_dev *dev, uint32 flags) {
     /* Ugh */
     _i2c_handle_remap(dev, flags);
 
+    /* Turn on clock and set GPIO modes */
+    i2c_init(dev);
+    i2c_config_gpios(dev);
+
     /* Reset the bus. Clock out any hung slaves. */
     if (flags & I2C_BUS_RESET) {
         i2c_bus_reset(dev);
     }
-
-    /* Turn on clock and set GPIO modes */
-    i2c_init(dev);
-    i2c_config_gpios(dev);
 
     /* Configure clock and rise time */
     set_ccr_trise(dev, flags);
