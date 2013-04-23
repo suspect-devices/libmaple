@@ -70,7 +70,7 @@ void init(void) {
     wirish::priv::board_setup_gpio();
     setup_adcs();
     setup_timers();
-//    wirish::priv::board_setup_usb();
+    wirish::priv::board_setup_usb();
     wirish::priv::series_init();
     boardInit();
 }
