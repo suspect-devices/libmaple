@@ -49,7 +49,7 @@ extern "C" {
 #endif
 
 #ifndef STM32_DELAY_US_MULT
-#define STM32_DELAY_US_MULT             20 /* FIXME: dummy value. */
+#define STM32_DELAY_US_MULT             40 /* 120MHz flash based program. */
 #endif
 
 /*
@@ -62,10 +62,10 @@ extern "C" {
 #define STM32_HAVE_USB                  1
 #define STM32_HAVE_DAC                  1
 
-#if defined(MCU_STM32F207IC) || defined(MCU_STM32F207IG)
+#if defined(MCU_STM32F207IC) || defined(MCU_STM32F207IG) || defined(MCU_STM32F205RF)
 #   define STM32_NR_GPIO_PORTS          9
 #   define STM32_TIMER_MASK             0x7FFE /* TIMER1-TIMER14. */
-#   define STM32_SRAM_END               ((void*)0x20020000)
+/*#   define STM32_SRAM_END               ((void*)0x20020000)  */
 #else
 #warning "Unsupported or unspecified STM32F2 MCU."
 #endif

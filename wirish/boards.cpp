@@ -70,7 +70,7 @@ void init(void) {
     wirish::priv::board_setup_gpio();
     setup_adcs();
     setup_timers();
-    wirish::priv::board_setup_usb();
+//    wirish::priv::board_setup_usb();
     wirish::priv::series_init();
     boardInit();
 }
@@ -150,7 +150,8 @@ static void setup_clocks(void) {
  */
 #define USER_ADDR_ROM 0x08005000
 #define USER_ADDR_RAM 0x20000C00
-
+extern char __text_start__;
+ 
 static void setup_nvic(void) {
 #ifdef VECT_TAB_FLASH
     nvic_init(USER_ADDR_ROM, 0);
@@ -158,8 +159,12 @@ static void setup_nvic(void) {
     nvic_init(USER_ADDR_RAM, 0);
 #elif defined VECT_TAB_BASE
     nvic_init((uint32)0x08000000, 0);
+#elif defined VECT_TAB_ADDR
+    // A numerically supplied value
+    nvic_init((uint32)VECT_TAB_ADDR, 0);
 #else
-#error "You must select a base address for the vector table."
+    // Use the __text_start__ value from the linker scipt, this should be the start of the vector table
+    nvic_init((uint32)&__text_start__, 0);
 #endif
 }
 

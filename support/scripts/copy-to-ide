@@ -13,23 +13,24 @@ LMAPLE_SRC="LICENSE
     ./libmaple/*.h
     ./libmaple/*.c
     ./libmaple/*.S
+    ./wirish/*.h
+    ./wirish/main.cxx
+    ./wirish/*.cpp
     ./libmaple/usb/*.h
     ./libmaple/usb/*.c
     ./libmaple/usb/usb_lib/*.h
     ./libmaple/usb/usb_lib/*.c
-    ./wirish/*.h
-    ./wirish/main.cxx
-    ./wirish/*.cpp
     ./wirish/comm/*.cpp
     ./wirish/comm/*.h
-    ./wirish/boards/*.h
-    ./wirish/boards/*.cpp
-    ./support/ld/common.inc
-    ./support/ld/maple
-    ./support/ld/maple_mini
-    ./support/ld/maple_native
-    ./support/ld/maple_RET6
-    ./support/ld/names.inc"
+    ./wirish/boards
+    ./libmaple/include
+    ./wirish/include
+    ./ld/common.inc
+    ./ld/maple
+    ./ld/maple_mini
+    ./ld/maple_native
+    ./ld/maple_RET6
+    ./ld/names.inc"
 
 echo "First make sure DEST exists: $DEST"
 if !(test -d $DEST)
@@ -42,6 +43,7 @@ fi
 echo Copying libmaple source
 rm -rf $DEST_CORES/*.c $DEST_CORES/*.cpp $DEST_CORES/*.h $DEST_CORES/*.cxx $DEST_CORES/*.S
 rm -rf $DEST_CORES/*.inc $DEST_CORES/*.a $DEST_CORES/maple $DEST_CORES/maple_* 
+mkdir -p $DEST_CORES
 cp -R $LMAPLE_SRC $DEST_CORES
 
 echo Copying over libraries

@@ -77,11 +77,11 @@ extern "C" {
      !defined(STM32_NR_GPIO_PORTS) ||     \
      !defined(STM32_TIMER_MASK)    ||     \
      !defined(STM32_DELAY_US_MULT) ||     \
-     !defined(STM32_SRAM_END)      ||     \
+/*     !defined(STM32_SRAM_END)      ||  */   \
      !defined(STM32_HAVE_DAC)      ||     \
      !defined(STM32_HAVE_FSMC)     ||     \
      !defined(STM32_HAVE_USB))
-#error "Bad STM32F1 configuration. Check <series/stm32.h> header for your MCU."
+#error "Bad STM32Fx configuration. Check <series/stm32.h> header for your MCU."
 #endif
 
 /*
