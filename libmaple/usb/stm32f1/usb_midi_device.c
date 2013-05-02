@@ -129,18 +129,22 @@ static void (*ep_int_out[7])(void) =
 /*
  * Globals required by usb_lib/
  *
- * Mark these weak so they can be overriden to implement other USB
- * functionality.
+ * These will override _weak defines in usb_cdcasm.c
+ *
  */
 
+#if defined(USB_TYPE) && (USB_TYPE==USB_MIDI)
+
 #define NUM_ENDPTS                0x04
-__weak DEVICE Device_Table = {
+
+DEVICE Device_Table = {
     .Total_Endpoint      = NUM_ENDPTS,
     .Total_Configuration = 1
 };
 
 #define MAX_PACKET_SIZE            0x40  /* 64B, maximum for USB FS Devices */
-__weak DEVICE_PROP Device_Property = {
+
+DEVICE_PROP Device_Property = {
     .Init                        = usbInit,
     .Reset                       = usbReset,
     .Process_Status_IN           = NOP_Process,
@@ -155,7 +159,7 @@ __weak DEVICE_PROP Device_Property = {
     .MaxPacketSize               = MAX_PACKET_SIZE
 };
 
-__weak USER_STANDARD_REQUESTS User_Standard_Requests = {
+USER_STANDARD_REQUESTS User_Standard_Requests = {
     .User_GetConfiguration   = NOP_Process,
     .User_SetConfiguration   = usbSetConfiguration,
     .User_GetInterface       = NOP_Process,
@@ -490,3 +494,5 @@ static void usbSetConfiguration(void) {
 static void usbSetDeviceAddress(void) {
     USBLIB->state = USB_ADDRESSED;
 }
+
+#endif
