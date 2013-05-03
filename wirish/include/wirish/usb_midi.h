@@ -35,6 +35,9 @@
 #include <wirish/Print.h>
 #include <wirish/boards.h>
 
+#define BOARD_HAVE_MIDIUSB (BOARD_HAVE_USB &&        \
+  (defined(USB_TYPE) && USB_TYPE == USB_MIDI))
+
 /**
  * @brief Virtual serial terminal.
  */
