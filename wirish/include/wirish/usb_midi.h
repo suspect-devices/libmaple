@@ -42,7 +42,7 @@
 /**
  * @brief Virtual serial terminal.
  */
-class USBMidi : public Print {
+class USBMidi {
 public:
     USBMidi(void);
 
@@ -50,14 +50,13 @@ public:
     void end(void);
 
     uint32 available(void);
-
-    uint32 read(void *buf, uint32 len);
-    uint8  read(void);
-
-    void write(uint8);
-    void write(const char *str);
-    void write(const void*, uint32);
-
+    
+    uint32 readPackets(void *buf, uint32 len);
+    uint32 readPacket(void);
+    
+    void writePacket(uint32);
+    void writePackets(const void*, uint32);
+    
     uint8 isConnected();
     uint8 pending();
 };

@@ -34,10 +34,10 @@
  * the result made cleaner.
  */
 
-#define USETXBUFFER
+//#define USETXBUFFER
 
 #include <libmaple/usb_midi_device.h>
-
+#include <libmaple/midi_specs.h>
 #include <libmaple/usb.h>
 #include <libmaple/nvic.h>
 #include <libmaple/delay.h>
@@ -90,20 +90,19 @@ static void usbSetDeviceAddress(void);
 /* I/O state */
 
 /* Received data */
-static volatile uint8 midiBufferRx[USB_MIDI_RX_EPSIZE];
+static volatile uint32 midiBufferRx[USB_MIDI_RX_EPSIZE/4];
 /* Read index into midiBufferRx */
 static volatile uint32 rx_offset = 0;
 /* Transmit data */
-static volatile uint8 midiBufferTx[USB_MIDI_TX_EPSIZE];
+static volatile uint32 midiBufferTx[USB_MIDI_TX_EPSIZE/4];
 /* Write index into midiBufferTx */
 static volatile uint32 tx_offset = 0;
 /* Number of bytes left to transmit */
-static volatile uint32 n_unsent_bytes = 0;
+static volatile uint32 n_unsent_packets = 0;
 /* Are we currently sending an IN packet? */
 static volatile uint8 transmitting = 0;
 /* Number of unread bytes */
-static volatile uint32 n_unread_bytes = 0;
-
+static volatile uint32 n_unread_packets = 0;
 /*
  * Endpoint callbacks
  */
@@ -193,20 +192,17 @@ void usb_midi_disable(gpio_dev *disc_dev, uint8 disc_bit) {
     gpio_write_bit(disc_dev, disc_bit, 1);
 }
 
-void usb_midi_putc(char ch) {
-    while (!usb_midi_tx_buffered((uint8*)&ch, 1))
-        ;	
-/*
-    while (!usb_midi_tx((uint8*)&ch, 1))
-        ;
-*/
-}
+//void usb_midi_putc(char ch) {
+//    while (!usb_midi_tx((uint8*)&ch, 1))
+//        ;
+//}
 
 /* This function is non-blocking.
  *
  * It copies data from a usercode buffer into the USB peripheral TX
  * buffer, and returns the number of bytes copied. */
-uint32 usb_midi_tx(const uint8* buf, uint32 len) {
+uint32 usb_midi_tx(const uint32* buf, uint32 packets) {
+    uint32 bytes=packets*4;
     /* Last transmission hasn't finished, so abort. */
     if (usb_midi_is_transmitting()) {
 		/* Copy to TxBuffer */
@@ -215,23 +211,24 @@ uint32 usb_midi_tx(const uint8* buf, uint32 len) {
     }
 
     /* We can only put USB_MIDI_TX_EPSIZE bytes in the buffer. */
-    if (len > USB_MIDI_TX_EPSIZE) {
-        len = USB_MIDI_TX_EPSIZE;
+    if (bytes > USB_MIDI_TX_EPSIZE) {
+        bytes = USB_MIDI_TX_EPSIZE;
+        packets=bytes/4;
     }
 
     /* Queue bytes for sending. */
-    if (len) {
-        usb_copy_to_pma(buf, len, USB_MIDI_TX_ADDR);
+    if (packets) {
+        usb_copy_to_pma((uint8 *)buf, bytes, USB_MIDI_TX_ADDR);
     }
     // We still need to wait for the interrupt, even if we're sending
     // zero bytes. (Sending zero-size packets is useful for flushing
     // host-side buffers.)
-    usb_set_ep_tx_count(USB_MIDI_TX_ENDP, len);
-    n_unsent_bytes = len;
+    usb_set_ep_tx_count(USB_MIDI_TX_ENDP, bytes);
+    n_unsent_packets = packets;
     transmitting = 1;
     usb_set_ep_tx_stat(USB_MIDI_TX_ENDP, USB_EP_STAT_TX_VALID);
-
-    return len;
+    
+    return packets;
 }
 
 /* 
@@ -243,7 +240,7 @@ uint32 usb_midi_tx(const uint8* buf, uint32 len) {
  *     TODO: Use the modules EP double buffering instead
  * 
  *  */
-uint32 usb_midi_tx_buffered(const uint8* buf, uint32 len) {
+uint32 usb_midi_tx_buffered(const uint32* buf, uint32 len) {
     if (usb_midi_is_transmitting()) {
 		uint8 count;
 		/* Copy to TxBuffer */
@@ -267,13 +264,13 @@ uint32 usb_midi_tx_buffered(const uint8* buf, uint32 len) {
 
     /* Queue bytes for sending. */
     if (len) {
-        usb_copy_to_pma(buf, len, USB_MIDI_TX_ADDR);
+        usb_copy_to_pma((uint8 *)buf, 4*len, USB_MIDI_TX_ADDR);
     }
     // We still need to wait for the interrupt, even if we're sending
     // zero bytes. (Sending zero-size packets is useful for flushing
     // host-side buffers.)
     usb_set_ep_tx_count(USB_MIDI_TX_ENDP, len);
-    n_unsent_bytes = len;
+    n_unsent_packets = len;
     transmitting = 1;
     usb_set_ep_tx_stat(USB_MIDI_TX_ENDP, USB_EP_STAT_TX_VALID);
 
@@ -304,7 +301,7 @@ uint32 usb_midi_tx_send_buffer() {
 #endif
 
 uint32 usb_midi_data_available(void) {
-    return n_unread_bytes;
+    return n_unread_packets;
 }
 
 uint8 usb_midi_is_transmitting(void) {
@@ -312,24 +309,24 @@ uint8 usb_midi_is_transmitting(void) {
 }
 
 uint16 usb_midi_get_pending(void) {
-    return n_unsent_bytes;
+    return n_unsent_packets;
 }
 
 /* Nonblocking byte receive.
  *
  * Copies up to len bytes from our private data buffer (*NOT* the PMA)
  * into buf and deq's the FIFO. */
-uint32 usb_midi_rx(uint8* buf, uint32 len) {
+uint32 usb_midi_rx(uint32* buf, uint32 packets) {
     /* Copy bytes to buffer. */
-    uint32 n_copied = usb_midi_peek(buf, len);
-
+    uint32 n_copied = usb_midi_peek(buf, packets);
+    
     /* Mark bytes as read. */
-    n_unread_bytes -= n_copied;
+    n_unread_packets -= n_copied;
     rx_offset += n_copied;
 
     /* If all bytes have been read, re-enable the RX endpoint, which
      * was set to NAK when the current batch of bytes was received. */
-    if (n_unread_bytes == 0) {
+    if (n_unread_packets == 0) {
         usb_set_ep_rx_count(USB_MIDI_RX_ENDP, USB_MIDI_RX_EPSIZE);
         usb_set_ep_rx_stat(USB_MIDI_RX_ENDP, USB_EP_STAT_RX_VALID);
         rx_offset = 0;
@@ -341,18 +338,17 @@ uint32 usb_midi_rx(uint8* buf, uint32 len) {
 /* Nonblocking byte lookahead.
  *
  * Looks at unread bytes without marking them as read. */
-uint32 usb_midi_peek(uint8* buf, uint32 len) {
+uint32 usb_midi_peek(uint32* buf, uint32 packets) {
     int i;
-
-    if (len > n_unread_bytes) {
-        len = n_unread_bytes;
+    if (packets > n_unread_packets) {
+        packets = n_unread_packets;
     }
-
-    for (i = 0; i < len; i++) {
+    
+    for (i = 0; i < packets; i++) {
         buf[i] = midiBufferRx[i + rx_offset];
     }
-
-    return len;
+    
+    return packets;
 }
 
 /*
@@ -360,7 +356,7 @@ uint32 usb_midi_peek(uint8* buf, uint32 len) {
  */
 
 static void midiDataTxCb(void) {
-    n_unsent_bytes = 0;
+    n_unsent_packets = 0;
     transmitting = 0;
 #ifdef USETXBUFFER
     usb_midi_tx_send_buffer();
@@ -368,21 +364,23 @@ static void midiDataTxCb(void) {
 }
 
 static void midiDataRxCb(void) {
+    
     usb_set_ep_rx_stat(USB_MIDI_RX_ENDP, USB_EP_STAT_RX_NAK);
-    n_unread_bytes = usb_get_ep_rx_count(USB_MIDI_RX_ENDP);
+    n_unread_packets = usb_get_ep_rx_count(USB_MIDI_RX_ENDP) / 4;
     /* This copy won't overwrite unread bytes, since we've set the RX
      * endpoint to NAK, and will only set it to VALID when all bytes
      * have been read. */
-    usb_copy_from_pma((uint8*)midiBufferRx, n_unread_bytes,
+    
+    usb_copy_from_pma((uint8*)midiBufferRx, n_unread_packets * 4,
                       USB_MIDI_RX_ADDR);
 
 
-    if (n_unread_bytes == 0) {
+    if (n_unread_packets == 0) {
         usb_set_ep_rx_count(USB_MIDI_RX_ENDP, USB_MIDI_RX_EPSIZE);
         usb_set_ep_rx_stat(USB_MIDI_RX_ENDP, USB_EP_STAT_RX_VALID);
         rx_offset = 0;
     }
-
+    
 }
 
 /* NOTE: Nothing specific to this device class in this function, but depenedent on the device, move to usb_lib or stm32fxx*/
@@ -443,8 +441,8 @@ static void usbReset(void) {
     SetDeviceAddress(0);
 
     /* Reset the RX/TX state */
-    n_unread_bytes = 0;
-    n_unsent_bytes = 0;
+    n_unread_packets = 0;
+    n_unsent_packets = 0;
     rx_offset = 0;
     tx_offset = 0;
     transmitting = 0;

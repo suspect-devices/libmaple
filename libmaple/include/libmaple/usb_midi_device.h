@@ -36,6 +36,7 @@
 #define _LIBMAPLE_USB_MIDI_DEVICE_H_
 
 #include <libmaple/libmaple_types.h>
+#include <libmaple/midi_specs.h>
 #include <libmaple/gpio.h>
 #include <libmaple/usb.h>
 
@@ -44,8 +45,9 @@ extern "C" {
 #endif
 
 typedef union {
-	uint8  byte[4];
-	uint32 data;
+    uint8  byte[4];
+    uint32 data;
+    MIDI_EVENT_PACKET_t packet;
 } USB_MIDI_Event_Packet;
 
 /*
@@ -88,10 +90,10 @@ void usb_midi_enable(gpio_dev*, uint8);
 void usb_midi_disable(gpio_dev*, uint8);
 
 void   usb_midi_putc(char ch);
-uint32 usb_midi_tx(const uint8* buf, uint32 len);
-uint32 usb_midi_tx_buffered(const uint8* buf, uint32 len);
-uint32 usb_midi_rx(uint8* buf, uint32 len);
-uint32 usb_midi_peek(uint8* buf, uint32 len);
+uint32 usb_midi_tx(const uint32* buf, uint32 len);
+uint32 usb_midi_tx_buffered(const uint32* buf, uint32 len);
+uint32 usb_midi_rx(uint32* buf, uint32 len);
+uint32 usb_midi_peek(uint32* buf, uint32 len);
 
 uint32 usb_midi_data_available(void); /* in RX buffer */
 uint16 usb_midi_get_pending(void);
