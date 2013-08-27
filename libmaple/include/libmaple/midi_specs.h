@@ -37,7 +37,7 @@
 #ifndef __LETS_MIDI_SPECS_H__
 #define __LETS_MIDI_SPECS_H__
 #include <stdint.h>
-#include <stdbool.h>
+//#include <stdbool.h>
 // rework this for the different architectures....
 #if defined(__GNUC__)
 typedef struct 
