@@ -348,8 +348,8 @@ void _i2c_irq_handler(i2c_dev *dev) {
      * Add Slave support
      */
 
-    /* Check to see if MSL master slave bit is set */
-    if ((sr2 & I2C_SR2_MSL) != I2C_SR2_MSL) { /* 0 = slave mode 1 = master */
+    /* Check to see if that a master transfer is not active */
+    if (dev->state != I2C_STATE_BUSY) { /* Master Xfer and no place else sets I2C_STATE_BUSY */
 
         /* Check for address match */
         if (sr1 & I2C_SR1_ADDR) {
