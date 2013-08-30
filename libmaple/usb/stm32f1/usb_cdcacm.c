@@ -69,6 +69,7 @@
 static void vcomDataTxCb(void);
 static void vcomDataRxCb(void);
 static uint8* vcomGetSetLineCoding(uint16);
+static uint32 usb_cdcacm_tx_send_buffer();
 
 static void usbInit(void);
 static void usbReset(void);
@@ -265,6 +266,10 @@ static ONE_DESCRIPTOR String_Descriptor[N_STRING_DESCRIPTORS] = {
 static volatile uint8 vcomBufferRx[USB_CDCACM_RX_EPSIZE];
 /* Read index into vcomBufferRx */
 static volatile uint32 rx_offset = 0;
+/* Transmit data */
+static volatile uint8 vcomBufferTx[USB_CDCACM_TX_EPSIZE];
+/* Write index into vcomBufferTx */
+static volatile uint32 tx_offset = 0;
 /* Number of bytes left to transmit */
 static volatile uint32 n_unsent_bytes = 0;
 /* Are we currently sending an IN packet? */
@@ -391,34 +396,57 @@ void usb_cdcacm_putc(char ch) {
         ;
 }
 
-/* This function is non-blocking.
- *
- * It copies data from a usercode buffer into the USB peripheral TX
- * buffer, and returns the number of bytes copied. */
+/* 
+ *     Theese functions implements a Tx buffer
+ * 
+ *     usb_cdcacm_tx(const uint8* buf, uint32 len)
+ *     usb_cdcacm_tx_send_buffer()
+ * 
+ *     TODO: Use the modules EP double buffering instead
+ * 
+ *  
+ */
+ 
+/*  Use this to signal the interrupt handler that application is writing to the Tx buffer */
+static volatile uint32 locktxbuffer = 0;
+
 uint32 usb_cdcacm_tx(const uint8* buf, uint32 len) {
-    /* Last transmission hasn't finished, so abort. */
-    if (usb_cdcacm_is_transmitting()) {
-        return 0;
+    int count = 0;
+    locktxbuffer = 1;
+    if (locktxbuffer)
+    {
+        int bpos = 0;
+        count = USB_CDCACM_TX_EPSIZE - tx_offset;
+        if  (len < count) count = len;
+        while (bpos < count) {
+            vcomBufferTx[tx_offset++] = buf[bpos++];
+        }
+		/* Disable USB EP interrupts */
+ 		USB_BASE->CNTR = USB_ISR_MSK&~USB_CNTR_CTRM;
+        if  (!usb_cdcacm_is_transmitting())
+        {
+		    usb_cdcacm_tx_send_buffer();
+        }
+	    locktxbuffer = 0;
+ 		/* Reenable USB EP interrupts */
+ 		USB_BASE->CNTR = USB_ISR_MSK&~USB_CNTR_CTRM;
     }
+    locktxbuffer = 0;
+    return count;
+}
 
-    /* We can only put USB_CDCACM_TX_EPSIZE bytes in the buffer. */
-    if (len > USB_CDCACM_TX_EPSIZE) {
-        len = USB_CDCACM_TX_EPSIZE;
-    }
-
+uint32 usb_cdcacm_tx_send_buffer() {
     /* Queue bytes for sending. */
-    if (len) {
-        usb_copy_to_pma(buf, len, USB_CDCACM_TX_ADDR);
+    if (tx_offset) {
+        usb_copy_to_pma((const uint8 *)vcomBufferTx, tx_offset, USB_CDCACM_TX_ADDR);
     }
-    // We still need to wait for the interrupt, even if we're sending
-    // zero bytes. (Sending zero-size packets is useful for flushing
-    // host-side buffers.)
-    usb_set_ep_tx_count(USB_CDCACM_TX_ENDP, len);
-    n_unsent_bytes = len;
+    usb_set_ep_tx_count(USB_CDCACM_TX_ENDP, tx_offset);
+    n_unsent_bytes = tx_offset;
+    tx_offset = 0;
     transmitting = 1;
     usb_set_ep_tx_stat(USB_CDCACM_TX_ENDP, USB_EP_STAT_TX_VALID);
 
-    return len;
+    return n_unsent_bytes;
 }
 
 uint32 usb_cdcacm_data_available(void) {
@@ -510,8 +538,11 @@ int usb_cdcacm_get_n_data_bits(void) {
  */
 
 static void vcomDataTxCb(void) {
-    n_unsent_bytes = 0;
     transmitting = 0;
+	/* If locktxbuffer is set then application is writing data to transmit buffer and will soon enable transmit ?? */
+    if (locktxbuffer) return;
+    /* Send next USB packet or zero length if previous was nonzero */
+    if ((n_unsent_bytes>0) || (tx_offset>0)) usb_cdcacm_tx_send_buffer();
 }
 
 static void vcomDataRxCb(void) {
