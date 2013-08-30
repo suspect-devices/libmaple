@@ -34,7 +34,7 @@
  * the result made cleaner.
  */
 
-//#define USETXBUFFER
+#define USETXBUFFER
 
 #include <libmaple/usb_midi_device.h>
 #include <libmaple/midi_specs.h>
@@ -85,6 +85,8 @@ static RESULT usbNoDataSetup(uint8 request);
 static RESULT usbGetInterfaceSetting(uint8 interface, uint8 alt_setting);
 static void usbSetConfiguration(void);
 static void usbSetDeviceAddress(void);
+static uint32 usb_midi_tx_send_buffer();
+
 
 
 /* I/O state */
@@ -201,6 +203,7 @@ void usb_midi_disable(gpio_dev *disc_dev, uint8 disc_bit) {
  *
  * It copies data from a usercode buffer into the USB peripheral TX
  * buffer, and returns the number of bytes copied. */
+#ifndef USETXBUFFER
 uint32 usb_midi_tx(const uint32* buf, uint32 packets) {
     uint32 bytes=packets*4;
     /* Last transmission hasn't finished, so abort. */
@@ -231,72 +234,61 @@ uint32 usb_midi_tx(const uint32* buf, uint32 packets) {
     return packets;
 }
 
+#else
+
 /* 
- *     Theese functions replaces EP double buffering:
+ *     Theese functions implements a Tx buffer
  * 
- *     usb_midi_tx_buffered(const uint8* buf, uint32 len)
+ *     usb_midi_tx(const uint8* buf, uint32 len)
  *     usb_midi_tx_send_buffer()
  * 
  *     TODO: Use the modules EP double buffering instead
  * 
- *  */
-uint32 usb_midi_tx_buffered(const uint32* buf, uint32 len) {
-    if (usb_midi_is_transmitting()) {
-		uint8 count;
-		/* Copy to TxBuffer */
+ *  
+ */
+ 
+/*  Use this to signal the interrupt handler that application is writing to the Tx buffer */
+static volatile uint32 locktxbuffer = 0;
+
+uint32 usb_midi_tx(const uint32* buf, uint32 packets) {
+    int count = 0;
+    locktxbuffer = 1;
+    if (locktxbuffer)
+    {
+        int bpos = 0;
+        count = USB_MIDI_TX_EPSIZE/4 - tx_offset;
+        if  (packets < count) count = packets;
+        while (bpos < count) {
+            midiBufferTx[tx_offset++] = buf[bpos++];
+        }
 		/* Disable USB EP interrupts */
-		USB_BASE->CNTR = USB_ISR_MSK&~USB_CNTR_CTRM;
-		if (len>(USB_MIDI_TX_EPSIZE-tx_offset)) len = USB_MIDI_TX_EPSIZE-tx_offset;
-		for (count=0;count<len;count++)
-		{
-    		midiBufferTx[tx_offset+count]=buf[count];
-    	}
-		tx_offset += len;
-		/* Reenable USB EP interrupts */
-		USB_BASE->CNTR = USB_ISR_MSK&~USB_CNTR_CTRM;
-        return len;  /* return len */
+ 		USB_BASE->CNTR = USB_ISR_MSK&~USB_CNTR_CTRM;
+        if  (!usb_midi_is_transmitting())
+        {
+		    usb_midi_tx_send_buffer();
+        }
+	    locktxbuffer = 0;
+ 		/* Reenable USB EP interrupts */
+ 		USB_BASE->CNTR = USB_ISR_MSK&~USB_CNTR_CTRM;
     }
-
-    /* We can only put USB_MIDI_TX_EPSIZE bytes in the buffer. */
-    if (len > USB_MIDI_TX_EPSIZE) {
-        len = USB_MIDI_TX_EPSIZE;
-    }
-
-    /* Queue bytes for sending. */
-    if (len) {
-        usb_copy_to_pma((uint8 *)buf, 4*len, USB_MIDI_TX_ADDR);
-    }
-    // We still need to wait for the interrupt, even if we're sending
-    // zero bytes. (Sending zero-size packets is useful for flushing
-    // host-side buffers.)
-    usb_set_ep_tx_count(USB_MIDI_TX_ENDP, len);
-    n_unsent_packets = len;
-    transmitting = 1;
-    usb_set_ep_tx_stat(USB_MIDI_TX_ENDP, USB_EP_STAT_TX_VALID);
-
-    return len;
+    locktxbuffer = 0;
+    return count;
 }
+#endif
 
 #ifdef USETXBUFFER
 uint32 usb_midi_tx_send_buffer() {
-    if (usb_midi_is_transmitting()) {
-        return 0;
-    }
     /* Queue bytes for sending. */
     if (tx_offset) {
-        usb_copy_to_pma((const uint8 *)midiBufferTx, tx_offset, USB_MIDI_TX_ADDR);
+        usb_copy_to_pma((const uint8 *)midiBufferTx, 4*tx_offset, USB_MIDI_TX_ADDR);
     }
-    else return 0;
-    // We still need to wait for the interrupt, even if we're sending
-    // zero bytes. (Sending zero-size packets is useful for flushing
-    // host-side buffers.)
-    usb_set_ep_tx_count(USB_MIDI_TX_ENDP, tx_offset);
-    n_unsent_bytes = tx_offset;
+    usb_set_ep_tx_count(USB_MIDI_TX_ENDP, 4*tx_offset);
+    n_unsent_packets = tx_offset;
     tx_offset = 0;
     transmitting = 1;
     usb_set_ep_tx_stat(USB_MIDI_TX_ENDP, USB_EP_STAT_TX_VALID);
 
-    return n_unsent_bytes;
+    return n_unsent_packets;
 }
 #endif
 
@@ -356,10 +348,13 @@ uint32 usb_midi_peek(uint32* buf, uint32 packets) {
  */
 
 static void midiDataTxCb(void) {
-    n_unsent_packets = 0;
+//    n_unsent_packets = 0;
     transmitting = 0;
 #ifdef USETXBUFFER
-    usb_midi_tx_send_buffer();
+	/* If locktxbuffer is set then application is writing data to midibuffer and will soon enable transmit ?? */
+    if (locktxbuffer) return;
+    /* Send next USB packet or zero length if previous was nonzero */
+    if ((n_unsent_packets>0) || (tx_offset>0)) usb_midi_tx_send_buffer();
 #endif
 }
 
